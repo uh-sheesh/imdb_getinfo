@@ -12,6 +12,8 @@ the command prompt with appropriate names for input and output.
 
 #import libraries
 import imdb
+from imdb import IMDbDataAccessError
+import logging
 import sys
 import os
 import pandas as pd
@@ -19,18 +21,17 @@ from pathlib import Path
 import time
 from tqdm import tqdm
 
-
 def main(i_fname, o_fname):
     #create a working class of the IMDB parser
-    ia = imdb.IMDb()
+    ia = imdb.IMDb(accessSystem='http', reraiseExceptions=True)
 
     #input file name
     input_file = i_fname  # TODO change to argument
     #get path for current working directory and add desired output subfolder
     output_dir = Path(os.getcwd() + '/data')
 
-    #string to handle any errors
-    error_message = 'Errors during search:'    
+    #declare default error message and string to handle any errors
+    default_err_msg = err_msg = '\n---------------------\nErrors during search:'
     
     #read csv file and create a data frame
     df = pd.DataFrame(data=pd.read_csv(output_dir / input_file, 
@@ -48,25 +49,52 @@ def main(i_fname, o_fname):
     #loop through each item and compile data to be saved back to csv
     for new_item in tqdm(df['IMDBCode']):
         #search for the item based on the ID
-        items = ia.get_movie(new_item)
+
+        try:
+            #logger throws access errors if the input MovieID does not exist
+            #to work around this, the program will just leave these records blank
+            logger = logging.getLogger('imdbpy');
+            logger.disabled = True
+            ia = imdb.IMDb(accessSystem='http', reraiseExceptions=True, loggingLevel="CRITICAL")
+            
+            #attempt to save the movie details
+            items = ia.get_movie(new_item)
+        except IMDbDataAccessError:
+            err_msg += '\n\'' + str(new_item) + '\' - IMDB Movie code returned no results.'
+            progress_bar_update()
+            continue
         
         #add each item to the data dictionary
         #try except is used for each item as IMDB may have missing information
         data = {}
-        try: data.update({'IMDBCode': items.movieID})
-        except KeyError: pass
-        try: data.update({'Title': items['title']})
-        except KeyError: pass
-        try: data.update({'Year': items['year']})
-        except KeyError: pass
-        try: data.update({'Plot': items['plot'][0]})
-        except KeyError: pass
-        try: data.update({'Type': items['kind']})
-        except KeyError: pass
-        try: data.update({'DurationMins': items['runtimes'][0]}) 
-        except KeyError: pass
-        try: data.update({'DurationHours': int(items['runtimes'][0]) / 60})
-        except KeyError: pass
+        try:
+            data.update({'IMDBCode': items.movieID})
+        except KeyError:
+            data.update({'IMDBCode': ''})
+        try:
+            data.update({'Title': items['title']})
+        except KeyError:
+            data.update({'Title': ''})
+        try:
+            data.update({'Year': items['year']})
+        except KeyError:
+            data.update({'Year': ''})
+        try:
+            data.update({'Plot': items['plot'][0]})
+        except KeyError:
+            data.update({'Plot': ''})
+        try: 
+            data.update({'Type': items['kind']})
+        except KeyError: 
+            data.update({'Type': ''})
+        try: 
+            data.update({'DurationMins': items['runtimes'][0]}) 
+        except KeyError: 
+            data.update({'DurationMins': ''})
+        try: 
+            data.update({'DurationHours': int(items['runtimes'][0]) / 60})
+        except KeyError: 
+            data.update({'DurationHours': ''})
     
         #genre counter and combined genre variables
         indv_genre = 0
@@ -101,7 +129,7 @@ def main(i_fname, o_fname):
         
         #get info specifically for tv shows such as episodes
         #then update with episode info
-        if items['kind'] == 'tv series':
+        if data['Type'] == 'tv series':
             #update the item if it is a tv series
             ia.update(items, 'episodes')
             
@@ -113,16 +141,26 @@ def main(i_fname, o_fname):
                 for indv_episode in all_season:
        
                     #update the tv series specific data to the data dictionary
-                    try: data.update({'Season': indv_season})
-                    except KeyError: pass
-                    try: data.update({'EpisodeNo': indv_episode})
-                    except KeyError: pass
-                    try: data.update({'EpisodeTitle': all_season[indv_episode]['title']})
-                    except KeyError: pass
-                    try: data.update({'DurationMins': items['runtimes'][0]})
-                    except KeyError: pass
-                    try: data.update({'DurationHours': int(items['runtimes'][0]) / 60})
-                    except KeyError: pass
+                    try:
+                        data.update({'Season': 'Season '+ str(indv_season)})
+                    except KeyError:
+                        data.update({'Season': ''})
+                    try: 
+                        data.update({'EpisodeNo': indv_episode})
+                    except KeyError: 
+                        data.update({'EpisodeNo': ''})
+                    try: 
+                        data.update({'EpisodeTitle': all_season[indv_episode]['title']})
+                    except KeyError: 
+                        data.update({'EpisodeTitle': ''})
+                    try: 
+                        data.update({'DurationMins': items['runtimes'][0]})
+                    except KeyError: 
+                        data.update({'DurationMins': ''})
+                    try: 
+                        data.update({'DurationHours': int(items['runtimes'][0]) / 60})
+                    except KeyError: 
+                        data.update({'DurationHours': ''})
                     
                     #add theupdated data dictionary to the dataframe
                     item_df = data
@@ -133,12 +171,11 @@ def main(i_fname, o_fname):
             #if movie append the temporary dataframe to the final dataframe
             final_df = final_df.append(item_df, ignore_index=True)
 
-        #add to the progress bar on each iteration
-        time.sleep(1)
+        progress_bar_update()
         
     #print complete message
-    if error_message != 'Errors during search:':
-        print(error_message)
+    if err_msg != default_err_msg:
+        print('\n' + err_msg)
 
     #export results to a csv file1
     output_file = o_fname
@@ -153,6 +190,12 @@ def usage():
           '\n1) Make sure all files are located in the data folder.',
           '\n2) Command should be in \'python input_filename.csv output_filename.csv\' format.',
           '\n3) Input file should be a single column, with heading.',)
+
+#update the progress bar on each iteration
+def progress_bar_update():
+     #add to the progress bar on each iteration
+     time.sleep(1)
+    
 
 if __name__ == '__main__':
     try:
