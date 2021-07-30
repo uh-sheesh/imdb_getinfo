@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 This uses the imdbPY library to access information about IMDB movies and shows.
-The script uses a list of textual titles for the request, and saves the movieID,
-year, and plot into a csv file.
+The script uses a list of textual titles for the request, and saves the IMDBCode,
+title, year, plot, type, season, episode no, episode title, genres, and duration
+to a csv file.
 
 Initially created on Saturday July 3 2021 by @author: uh-sheesh.
 
@@ -26,7 +27,7 @@ def main(i_fname, o_fname):
     ia = imdb.IMDb(accessSystem='http', reraiseExceptions=True)
 
     #input file name
-    input_file = i_fname  # TODO change to argument
+    input_file = i_fname
     #get path for current working directory and add desired output subfolder
     output_dir = Path(os.getcwd() + '/data')
 
@@ -39,9 +40,9 @@ def main(i_fname, o_fname):
                                        usecols=['IMDBCode', 'Title', 'Year', 'Plot']).reset_index())
     
     # Declare a list that is to be converted into a column
-    new_cols = ['IMDBCode', 'Title', 'Year', 'Plot', 'Type', 'Season', 
-                'EpisodeNo', 'EpisodeTitle', 'CombGenre', 'Genre1', 'Genre2', 'Genre3',
-                'Genre4', 'Genre5', 'DurationMins', 'DurationHours']
+    new_cols = ['IMDBCode', 'Title', 'Year', 'Plot', 'Type', 'CombGenre', 
+                'Genre1', 'Genre2', 'Genre3', 'SeasonNo', 'SeasonName', 'EpisodeNo', 'EpisodeTitle', 'Platform',
+                'DurationMins', 'DurationHours']
     
     #create a dataframe that will be used for the final
     final_df = pd.DataFrame(columns= new_cols)
@@ -84,7 +85,12 @@ def main(i_fname, o_fname):
         except KeyError:
             data.update({'Plot': ''})
         try: 
-            data.update({'Type': items['kind']})
+            if items['kind'] == 'tv series' or items['kind'] == 'tv mini series':
+                data.update({'Type': 'Show'})
+            elif items['kind'] == 'movie':
+                data.update({'Type': 'Movie'})
+            else:
+                data.update({'Type': items['kind']})
         except KeyError: 
             data.update({'Type': ''})
         try: 
@@ -103,7 +109,7 @@ def main(i_fname, o_fname):
         #check if atleast 1 genre is available
         try:
             #search and add all the genres
-            while indv_genre < len(items.data['genres']):
+            while indv_genre < len(items.data['genres']) and indv_genre <3:
                 
                 #create a string with the column title i.e. Genre1, Genre2
                 g = 'Genre' + str(indv_genre+1)
@@ -129,7 +135,7 @@ def main(i_fname, o_fname):
         
         #get info specifically for tv shows such as episodes
         #then update with episode info
-        if data['Type'] == 'tv series':
+        if data['Type'] == 'Show':
             #update the item if it is a tv series
             ia.update(items, 'episodes')
             
@@ -141,10 +147,12 @@ def main(i_fname, o_fname):
                 for indv_episode in all_season:
        
                     #update the tv series specific data to the data dictionary
+                    #SeasonName and Platform are unavailable on IMDB
                     try:
-                        data.update({'Season': 'Season '+ str(indv_season)})
+                        data.update({'SeasonNo': 'Season '+ str(indv_season)})
                     except KeyError:
-                        data.update({'Season': ''})
+                        data.update({'SeasonNo': ''})
+                    #data.update({'SeasonName': ''})
                     try: 
                         data.update({'EpisodeNo': indv_episode})
                     except KeyError: 
@@ -153,6 +161,7 @@ def main(i_fname, o_fname):
                         data.update({'EpisodeTitle': all_season[indv_episode]['title']})
                     except KeyError: 
                         data.update({'EpisodeTitle': ''})
+                    #update({'Platform': ''})
                     try: 
                         data.update({'DurationMins': items['runtimes'][0]})
                     except KeyError: 
@@ -196,7 +205,6 @@ def progress_bar_update():
      #add to the progress bar on each iteration
      time.sleep(1)
     
-
 if __name__ == '__main__':
     try:
         main(sys.argv[1], sys.argv[2])
