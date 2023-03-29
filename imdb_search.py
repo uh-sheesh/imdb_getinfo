@@ -5,6 +5,7 @@ The script uses a list of textual titles for the request, and saves the movieID,
 year, and plot into a csv file.
 
 Initially created on Saturday July 3 2021 by @author: uh-sheesh.
+Last updated: November 26, 2022.
 
 To use the script, call either:
 - 'python imdb_search.py input_name.csv output_name.csv'
@@ -12,107 +13,82 @@ To use the script, call either:
 - 'python imdb_search.py 'itemname' output_itemname.csv'
   i.e. 'python imdb_search.py 'Anthony Bourdain: Parts Unknown' output_itemname.csv'
 from the command prompt with appropriate names for input and output.
+
+TODO need to rewrite now a helper function
 """
 
 #import libraries
-import imdb
+from imdb import Cinemagoer
 import sys
 import os
 import re
 import pandas as pd
 from pathlib import Path
-import time
-from tqdm import tqdm
 
-def main(i_fname, o_fname, type_search):
+
+def select_title(i_fname, item_type):
+
     # create a working class of the IMDB parser
-    ia = imdb.IMDb()
+    ia = Cinemagoer()
 
-    # input item name, either file or the search item
-    input_item = i_fname
-    # get path for current working directory and add desired output subfolder
-    output_dir = Path(os.getcwd() + '/data')
+    # search for the item based on the textual name
+    items = ia.search_movie(i_fname)
 
-    # string to handle any errors
-    error_message = 'Errors during search:'
+    # if a single item, ask about ambiguity, else just take the first item
+    if item_type == 'ITEM':
+        print('Found ' + str(len(
+            items)) + ' items based on search \'' + i_fname + '\'.')
 
-    # if the item is a file, add the csv to data frame, else just add the item
-    if type_search == 'FILE':
-        # read csv file and create a data frame
-        df = pd.DataFrame(data=pd.read_csv(output_dir / input_item, index_col=0),
-                          columns=['IMDBCode', 'Year', 'Plot'])
-    elif type_search == 'ITEM':
-        df = pd.DataFrame(columns=['IMDBCode', 'Year', 'Plot'])
-        df['Title'] = [i_fname]
-        df.set_index('Title', inplace=True)
+        # checks if each item exists and then copies
+        item_counter = 1
+        for item in items:
 
-    # convert the Plot column type to string
-    df['Plot'] = df['Plot'].astype("string")
+            try:
+                kind = item['kind']
+            except:
+                kind = 'UNKNOWN'
 
-    # loop through each item and compile data to be saved back to csv
-    for i in tqdm(df.index):
-        # search for the item based on the textual name
-        items = ia.search_movie(i)
+            try:
+                title = item['title']
+            except:
+                title = 'UNKNOWN'
 
-        # if IMDB Movie code was found, if not return to beginning of loop
-        if not items:
-            error_message += '\n\'' + i + '\' - ID could not be found based on title.'
-            continue
-        else:
-            # if IMDB Movie code is found, save code to dataframe
-            df.at[i, 'IMDBCode'] = items[0].movieID
+            try:
+                movieID = item.movieID
+            except:
+                movieID = '0000001'
 
-        # use the get_movie method to get more complete info about the ID
-        item = ia.get_movie(df.at[i, 'IMDBCode'])
+            print(item_counter, ' - ', kind, ' - ', title, movieID)
+            item_counter += 1
 
-        # save the first plot found if there is a plot
-        try:
-            df.at[i, 'Plot'] = item['plot'][0]
-        except:
-            error_message += '\n\'' + i + '\' - Plot could not be found.'
+        # save user selection
+        selected_option = input(
+            'Which item would you like to select? Enter the number: ')
 
-        # save the year if there is a year
-        try:
-            df.at[i, 'Year'] = item['year']
-        except:
-            error_message += '\n\'' + i + '\' - Year could not be found.'
+        selected_item = items[int(selected_option)-1]
 
-        # add to the progress bar on each iteration
-        time.sleep(1)
+    else:
+        selected_item = items[0]
 
-    # print error message
-    if error_message != 'Errors during search:':
-        print(error_message)
+    return selected_item.movieID
 
-    # print complete message
-    print('Search complete for', len(df.index), 'search terms!')
 
-    # export results to a csv file1
-    output_item = o_fname
-    output_dir.mkdir(parents=True, exist_ok=True)
+def main(i_fname, type_search):
 
-    # can join path elements with / operator
-    df.to_csv(output_dir / output_item)
+    # select which title out of all if the name is ambiguous
+    mySelectedMovieID = select_title(i_fname, type_search)
 
-# prints a message on how to use the program
-def usage():
-    print('Follow these instructions to use the program:',
-          '\n1) If using an input file, make sure all files are located in the data folder.',
-          '\n   Input file should be a single column, with heading.',
-          '\n2) Use either: \'python imdb_search.py input_name.csv output_name.csv\'',
-          '\n   or \'python imdb_search.py \'itemname\' output_itemname.csv.',
-          '\n3) The output file will be saved in the data folder with the chosen filename.')
+    print("Aha! The movieID is: ", mySelectedMovieID)
+
+    end_message = input('Enter any key to Exit.')
+
 
 if __name__ == '__main__':
-    try:
-        # check if a csv file is being passed or the name of an item
-        if re.search(r'.csv', sys.argv[1]):
-            main(sys.argv[1], sys.argv[2], 'FILE')
-        else:
-            main(sys.argv[1], sys.argv[2], 'ITEM')
 
-    except IndexError:
-        usage()
+    try:
+        entered_text = input('Enter the name of an item: ')
+        main(entered_text, 'ITEM')
+
     except KeyboardInterrupt:
         print('\nProgram Interrupted!')
         try:
