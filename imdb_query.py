@@ -106,7 +106,13 @@ def file_openner(open_file, save_location):
     if open_file.lower() == 'y' or open_file.lower() == 'yes':
 
         file = output_dir + save_location
-        os.startfile(file)
+
+        # if windows
+        if os.name == 'nt':
+            os.startfile(file)
+        # if mac or linux
+        else:
+            os.system("open data/" + save_location)
         print('Output file opened with default application.')
     else:
         print('The search results have been saved in the selected location.')
